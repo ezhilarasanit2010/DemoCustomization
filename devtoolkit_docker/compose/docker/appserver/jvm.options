@@ -1,0 +1,10 @@
+-Dvendor=shell
+-DvendorFile=servers.properties
+-Xms1024m
+-Xmx3072m
+-Dhttps.protocols=TLSv1.2
+-Dcom.ibm.jsse2.overrideDefaultTLS=true
+-Djavax.net.ssl.keyStore=/var/oms/keystore/key.jks
+-Djavax.net.ssl.keyStorePassword=secret4ever
+-Xdebug
+-Xrunjdwp:transport=dt_socket,server=y,address=8383,suspend=n

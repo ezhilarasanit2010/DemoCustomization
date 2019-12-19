@@ -1,0 +1,94 @@
+# Licensed Materials - Property of IBM
+# IBM Sterling Order Management (5725-D10), IBM Order Management (5737-D18)
+# (C) Copyright IBM Corp. 2018 All Rights Reserved.
+# US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with IBM Corp.
+version: '3'
+services:
+  db2server:
+    image: ${DB_IMAGE}:${DB_TAG}
+    ports:
+      - "${DB_PORT}:${DB_PORT_IMAGE}"
+    entrypoint: /bin/bash
+    command: ["/var/oms/configure_db2.sh"]
+    environment:
+      - DUMMY_PATH_PROP=1
+      - LICENSE=${DB_LICENSE}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_DATA=${DB_DATA}
+      - DB_BACKUP_RESTORE=${DB_BACKUP_RESTORE}
+      - DB_BACKUP_ZIP=${DB_BACKUP_ZIP}
+      - BLU=false
+      - ENABLE_ORACLE_COMPATIBILITY=true
+      - UPDATEAVAIL=NO
+      - TO_CREATE_SAMPLEDB=false
+      - REPODB=false
+      - IS_OSXFS=false
+      - PERSISTENT_HOME=true
+      - HADR_ENABLED=false
+    volumes:
+      - db_jars:/home/${DB_USER}/sqllib/java
+      - db2insthome:/home/${DB_USER}/${DB_USER}
+      - ./db2server/configure_db2.sh:/var/oms/configure_db2.sh
+      - shared:/var/oms
+    privileged: true
+    container_name: om-db2server
+  omruntime:
+    image: ${OM_IMAGE}:${OM_TAG}
+    command: ["sleep","infinity"]
+    environment:
+      - DUMMY_PATH_PROP=1
+    volumes:
+      - ear:${RT}/external_deployments
+      - db_jars:/tmp/dbjar
+      - ./omruntime:/tmp/oms
+      - ${MQ_JNDI_DIR}:${MQ_JNDI_DIR2}
+      - shared:/var/oms
+    depends_on:
+      - db2server
+    container_name: om-runtime
+  appserver:
+    image: ${AP_IMAGE}:${AP_TAG}
+    ports:
+      - "${AP_HTTP_PORT}:9080"
+      - "${AP_HTTPS_PORT}:9443"
+      - "${AP_DEBUG_PORT}:8383"
+    depends_on:
+      - omruntime
+    environment:
+      - DUMMY_PATH_PROP=1
+    volumes:
+      - ear:/config/dropins
+      - db_jars:/opt/ibm/jars
+      - ./appserver/jvm.options:/config/jvm.options
+      - ./appserver/server.xml:/config/server.xml
+      - ${MQ_JNDI_DIR}:${MQ_JNDI_DIR2}
+      - shared:/var/oms
+    container_name: om-appserver
+  mqserver:
+    image: ${MQ_IMAGE}:${MQ_TAG}
+    ports:
+      - "${MQ_PORT}:1414"
+      - "${MQ_HTTP_PORT}:9443"
+    environment:
+      - DUMMY_PATH_PROP=1
+      - LICENSE=${MQ_LICENSE}
+      - MQ_QMGR_NAME=${MQ_QMGR_NAME}
+    volumes:
+      - var_mqm:/mnt/mqm
+      - shared:/var/oms
+      - ./mqserver/config.mqsc:/etc/mqm/config.mqsc
+      - ./mqserver/configure_bindings.sh:/var/oms/configure_bindings.sh
+      - ${MQ_JNDI_DIR}:${MQ_JNDI_DIR2}
+    container_name: om-mqserver
+volumes:
+  shared:
+    driver: local
+  var_mqm:
+    driver: local
+  ear:
+    driver: local
+  db_jars:
+    driver: local
+  db2insthome:
+    driver: local
