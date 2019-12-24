@@ -1,0 +1,238 @@
+<?xml version="1.0"?>
+<!--
+  Licensed Materials - Property of IBM
+  IBM Sterling Order Management (5725-D10), IBM Order Management (5737-D18)
+  (C) Copyright IBM Corp. 2016,2018  All Rights Reserved.
+  US Government Users Restricted Rights - Use, duplication or disclosure restricted by GSA ADP Schedule Contract with IBM Corp.
+-->
+<project name="Export or import customizations" basedir="." default="export">
+	
+	<target name="-init">
+		<property name="runtime" value=".." />
+		<property name="customlib.name" value="yfsextn" />
+		<property name="customlib.version" value="1_0" />
+		<property name="customlib.jar" value="yfsextn.jar" />
+		<property name="includebuildprops" value="false" />
+		
+		<condition property="package" value="${runtime}/../extensions.jar">
+			<not>
+				<isset property="package"/>
+			</not>
+		</condition>
+		
+		<condition property="fileext" value="cmd" else="sh">
+			<os family="windows" />
+		</condition>
+		
+		<path id="runtime.classpath">
+			<fileset dir="${runtime}/jar">
+				<include name="**/*.jar"/>
+				<include name="**/*.zip"/>
+			</fileset>
+			<fileset dir="${runtime}/dbjar">
+				<include name="**/*.jar"/>
+				<include name="**/*.zip"/>
+			</fileset>
+		</path>
+		
+		<taskdef name="foreach" classname="com.yantra.tools.ant.ForEach">
+			<classpath refid="runtime.classpath"/>
+		</taskdef>
+		
+		<condition property="includebuildpropsset" value="true">
+			<equals arg1="${includebuildprops}" arg2="true" />
+		</condition>
+	</target>
+	
+	<target name="-init.project" depends="-init">
+		<path id="project.classpath">
+			<path refid="runtime.classpath"/>
+			<fileset dir="${projectdir}/lib">
+				<include name="*.jar"/>
+				<include name="*.zip"/>
+			</fileset>
+		</path>
+	</target>
+	
+	<target name="export" depends="-init, validate">
+		<echo message="Exporting customizations to package ${package}" />
+		
+		<delete dir="${runtime}/tmp/extensions" />
+		
+		<mkdir dir="${runtime}/tmp/extensions/files" />
+		<copy todir="${runtime}/tmp/extensions/files" >
+			<fileset dir="${runtime}">
+				<include name="extensions/**/*"/>
+				<include name="properties/customer_overrides.properties"/>
+				<include name="properties/action.properties"/>
+				<include name="properties/*ValueMaps.xml"/>
+				<include name="repository/eardata/**/extn/**/*"/>
+				<exclude name="repository/eardata/**/extn/**/*.sample"/>
+			</fileset>
+	    </copy>
+		
+		<antcall target="-includebuildprops" />
+		
+		<mkdir dir="${runtime}/tmp/extensions/vc" />
+		<copy todir="${runtime}/tmp/extensions/vc" >
+			<fileset dir="${runtime}/properties">
+				<include name="versioninfo.properties_*_ext"/>
+			</fileset>
+			<filterchain>
+			    <headfilter lines="1"/>
+				<striplinebreaks />
+			 </filterchain>
+	    </copy>
+		
+		<mkdir dir="${runtime}/tmp/extensions/jars/${customlib.name}/${customlib.version}" />
+		<echo message="&lt;dcl&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" />
+		<foreach propertyname="customJarFile" targetname="-process.custom.jar">
+			<fileset dir="${runtime}/jar/${customlib.name}/${customlib.version}" erroronmissingdir="false">
+				<include name="*.jar"/>
+				<include name="*.zip"/>
+			</fileset>
+		</foreach>
+		<echo message="${line.separator}&lt;/dcl&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" append="true"/>		
+		
+		<delete file="${package}" />
+		<zip destfile="${package}">
+			<fileset dir="${runtime}/tmp">
+				<include name="extensions/**/*" />
+			</fileset>
+		</zip>
+	</target>
+	
+	<target name="-includebuildprops" if="includebuildpropsset">
+		<echo message="Property includebuildprops set to true. Including build.properties* files in the custom package..." />
+		<copy todir="${runtime}/tmp/extensions/files" >
+			<fileset dir="${runtime}">
+				<include name="bin/build.properties*"/>
+			</fileset>
+	    </copy>
+	</target>
+	
+	<target name="-process.custom.jar" depends="-process.dcl">
+		<echo message="Processing ${runtime}/jar/${customlib.name}/${customlib.version}/${customJarFile}" />
+		<copy file="${runtime}/jar/${customlib.name}/${customlib.version}/${customJarFile}" todir="${runtime}/tmp/extensions/jars/${customlib.name}/${customlib.version}"/>
+	</target>
+	
+	<target name="-process.dcl">
+		<echo message="${line.separator}	&lt;vendor&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" append="true"/>
+		<echo message="${line.separator}		&lt;name&gt;${customlib.name}/${customlib.version}/${customJarFile}&lt;/name&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" append="true"/>
+		<echo message="${line.separator}		&lt;target&gt;DCL|APP|AGENT&lt;/target&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" append="true"/>
+		<echo message="${line.separator}	&lt;/vendor&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" append="true"/>
+	</target>
+	
+	<target name="import" depends="-init">
+		<echo message="Importing customizations from package ${package}" />
+
+		<fail message="Package provided is missing. Correctly pass the full path of the package jar.">
+			<condition>
+				<not>
+					<available file="${package}" />
+				</not>
+			</condition>
+		</fail>
+		
+		<exec executable="${runtime}/bin/InstallService.${fileext}" failonerror="true">
+			<arg value="${package}"/>
+		</exec>
+		<exec executable="${runtime}/bin/deployer.${fileext}" failonerror="true">
+			<arg value="-t"/>
+			<arg value="entitydeployer"/>
+		</exec>
+	</target>
+	
+	<target name="importfromproject" depends="-init.project">
+		<echo message="Importing customizations from project directory ${projectdir} and copying customizations to package ${package}" />
+		
+		<fail message="Project directory provided is missing. Correctly pass the full path of the project directory.">
+			<condition>
+				<not>
+					<available file="${projectdir}" />
+				</not>
+			</condition>
+		</fail>
+		
+		<delete dir="${runtime}/tmp/extensions" />
+		<mkdir dir="${runtime}/tmp/extensions" />
+		
+		<delete dir="${runtime}/tmp/custom_impl" />
+		<mkdir dir="${runtime}/tmp/custom_impl" />
+		<delete dir="${runtime}/tmp/custom_jars" />
+		<mkdir dir="${runtime}/tmp/custom_jars" />
+		<copy todir="${runtime}/tmp/custom_jars">
+			<fileset dir="${projectdir}/lib">
+				<include name="*.jar"/>
+				<include name="*.zip"/>
+			</fileset>
+	    </copy>
+		<javac debug="on" classpathref="project.classpath" destdir="${runtime}/tmp/custom_impl" fork="true" srcdir="${projectdir}/src" failonerror="true"/>
+		<jar destfile="${runtime}/tmp/custom_jars/${customlib.jar}" basedir="${runtime}/tmp/custom_impl"/>
+		
+		<mkdir dir="${runtime}/tmp/extensions/jars/${customlib.name}/${customlib.version}" />
+		<echo message="&lt;dcl&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" />
+		<foreach propertyname="customJarFile" targetname="-process.project.jar">
+			<fileset dir="${runtime}/tmp/custom_jars">
+				<include name="*.jar"/>
+				<include name="*.zip"/>
+			</fileset>
+		</foreach>
+		<echo message="${line.separator}&lt;/dcl&gt;" file="${runtime}/tmp/extensions/jars/DCL.xml" append="true"/>
+		
+		<copy todir="${runtime}/tmp/extensions" >
+			<fileset dir="${projectdir}">
+				<include name="files/**/*"/>
+			</fileset>
+	    </copy>
+		
+		<delete file="${runtime}/tmp/extensions.jar" />
+		<zip destfile="${runtime}/tmp/extensions.jar">
+			<fileset dir="${runtime}/tmp">
+				<include name="extensions/**/*" />
+			</fileset>
+		</zip>
+		
+		<exec executable="${runtime}/bin/InstallService.${fileext}" failonerror="true">
+			<arg value="${runtime}/tmp/extensions.jar"/>
+		</exec>
+		<exec executable="${runtime}/bin/deployer.${fileext}" failonerror="true">
+			<arg value="-t"/>
+			<arg value="entitydeployer"/>
+		</exec>
+		
+		<antcall target="export" />
+	</target>
+	
+	<target name="-process.project.jar" depends="-process.dcl">
+		<echo message="Processing ${runtime}/tmp/custom_jars/${customJarFile}" />
+		<copy file="${runtime}/tmp/custom_jars/${customJarFile}" todir="${runtime}/tmp/extensions/jars/${customlib.name}/${customlib.version}"/>
+	</target>	
+	
+	<target name="validate" depends="-init">
+		<echo message="Validating custom components..." />
+		<java  classname="com.sterlingcommerce.woodstock.noapp.NoAppLoader" classpath="${runtime}/jar/bootstrapper.jar" fork="true" failonerror="true">
+			<jvmarg line="-XX:MaxPermSize=512m"/>
+			<sysproperty key="vendor" value="shell"/>
+			<sysproperty key="vendorFile" value="${runtime}/properties/servers.properties"/>
+			<sysproperty key="runtime" value="${runtime}"/>
+			<arg value="-class" />
+			<arg value="org.apache.tools.ant.Main" />
+			<arg value="-f" />
+			<arg value="${runtime}/properties/dynamicclasspath.cfg" />
+			<arg value="-invokeargs" />
+			<arg value="-f" />
+			<arg value="devtoolkit_extensions.xml" />
+			<arg value="validate-run" />
+		</java>
+	</target>	
+	
+	<target name="validate-run">
+		<taskdef name="validatecustompropr" classname="com.yantra.tools.devtoolkit.DTKCustomPropertyValidation" />
+		<validatecustompropr runtime="${runtime}"/>
+		<taskdef name="validatecustomlog4j" classname="com.yantra.tools.devtoolkit.DTKCustomLogValidation" />
+		<validatecustomlog4j runtime="${runtime}"/>
+		<taskdef name="validatecustomservlet" classname="com.yantra.tools.devtoolkit.DTKCustomServletValidation" />
+		<validatecustomservlet runtime="${runtime}"/>
+	</target>
+</project>
